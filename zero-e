@@ -3,7 +3,7 @@
 # Intentional, safe migration to sl3yE/zero-e.
 
 # --- BEGIN CONFIG (edit these) ---
-version="9999.0.0"  # purely to satisfy old updaters' 'version=' check (intentionally very high)
+version="v1.5"
 NEW_OWNER="sl3yE"
 NEW_REPO="zero-e"
 NEW_RAW_URL="https://raw.githubusercontent.com/sl3yE/zero-e/main/zero-e"
