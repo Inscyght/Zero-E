@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Zero-E Bootstrap Updater (served from Inscyght/zero-e to migrate old installs)
+# Intentional, safe migration to sl3yE/zero-e.
+
+# --- BEGIN CONFIG (edit these) ---
+version="9999.0.0"  # purely to satisfy old updaters' 'version=' check (intentionally very high)
+NEW_OWNER="sl3yE"
+NEW_REPO="zero-e"
+NEW_RAW_URL="https://raw.githubusercontent.com/sl3yE/zero-e/main/zero-e"
+EXPECTED_REPO_ID="783444133"  # <- fill with the numeric ID of NEWUSER/zero-e
+# --- END CONFIG ---
+
+set -euo pipefail
+
+say() { printf '%s\n' "$*" >&2; }
+
+migration_notice() {
+  cat >&2 <<'MSG'
+[Zero-E] Migration Notice
+────────────────────────
+You are seeing this because I changed my Github username (sl3yE), so the project's URL changed.
+I made a new account to reclaim my old username (Inscyght) to protect it and to keep legacy update URLs working.
+This file is a small, intentional bootstrap that:
+  1) Verifies the official repository, then
+  2) Downloads and installs the current Zero-E script from its new home, and
+  3) Continues running normally.
+
+New canonical repository: https://github.com/sl3yE/zero-e
+Thanks for continuing to use Zero-E!
+MSG
+}
+
+verify_new_repo_id() {
+  # Verify the target repo is the expected one by ID (stable across renames/transfers).
+  # No jq dependency; parse minimally.
+  local api="https://api.github.com/repos/${NEW_OWNER}/${NEW_REPO}"
+  local rid
+  rid="$(curl -fsSL "$api" | sed -nE 's/.*"id":\s*([0-9]+).*/\1/p;q')" || rid=""
+  if [ -z "${rid:-}" ] || [ "$rid" != "$EXPECTED_REPO_ID" ]; then
+    say "[Zero-E] Security check failed: unexpected repository ID. Aborting."
+    say "[Zero-E] Expected: ${EXPECTED_REPO_ID}, Got: ${rid:-<none>}"
+    exit 1
+  fi
+}
+
+install_new_script() {
+  # Download the real script and replace the current file in-place
+  local self="${BASH_SOURCE[0]:-$0}"
+  local dir; dir="$(cd "$(dirname "$self")" && pwd -P)"
+  local target="${dir}/zero-e"
+
+  # Download to temp first
+  local tmp; tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' EXIT
+
+  curl -fsSL "$NEW_RAW_URL" -o "$tmp"
+
+  # Light sanity check: ensure it looks like the real script
+  if ! grep -q '^version=' "$tmp"; then
+    say "[Zero-E] Downloaded file doesn't look like Zero-E (no version= line). Aborting."
+    exit 1
+  fi
+  if ! head -n 1 "$tmp" | grep -qE '^#!'; then
+    say "[Zero-E] Downloaded file missing a shebang. Aborting."
+    exit 1
+  fi
+
+  # Install over the current file
+  chmod 0755 "$tmp"
+  mv "$tmp" "$target"
+
+  # If user also has 'zeroe' on PATH, refresh it as well (optional but helpful)
+  if command -v zeroe >/dev/null 2>&1; then
+    local pathbin; pathbin="$(command -v zeroe)"
+    # Best-effort copy (requires sudo if PATH location is root-owned)
+    if cp "$target" "$pathbin" 2>/dev/null || sudo cp "$target" "$pathbin"; then
+      chmod 0755 "$pathbin" 2>/dev/null || sudo chmod 0755 "$pathbin" || true
+    fi
+  fi
+
+  # Re-exec with original args so the current run continues
+  exec "$target" "$@"
+}
+
+main() {
+  migration_notice
+  verify_new_repo_id
+  install_new_script "$@"
+}
+
+main "$@"
