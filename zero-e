@@ -3,11 +3,11 @@
 # Intentional, safe migration to sl3yE/zero-e.
 
 # --- BEGIN CONFIG (edit these) ---
-version="v1.5"
+version="v1.5-bootstrap"                 # visible to old updaters
 NEW_OWNER="sl3yE"
 NEW_REPO="zero-e"
-NEW_RAW_URL="https://raw.githubusercontent.com/sl3yE/zero-e/main/zero-e"
-EXPECTED_REPO_ID="783444133"  # <- fill with the numeric ID of NEWUSER/zero-e
+NEW_RAW_URL="https://raw.githubusercontent.com/${NEW_OWNER}/${NEW_REPO}/main/zero-e"
+EXPECTED_REPO_ID="783444133"             # numeric repo ID of sl3yE/zero-e
 # --- END CONFIG ---
 
 set -euo pipefail
@@ -18,73 +18,108 @@ migration_notice() {
   cat >&2 <<'MSG'
 [Zero-E] Migration Notice
 ────────────────────────
-You are seeing this because I changed my Github username (sl3yE), so the project's URL changed.
-I made a new account to reclaim my old username (Inscyght) to protect it and to keep legacy update URLs working.
-This file is a small, intentional bootstrap that:
-  1) Verifies the official repository, then
-  2) Downloads and installs the current Zero-E script from its new home, and
+You are seeing this because I changed my Github username to 'sl3yE', which caused the project's URL changed.
+Since old versions of z0e check the old URL for updates, 
+I made a new account to reclaim and protect my old username (Inscyght) and to keep legacy update URLs working.
+this file is a small, intentional bootstrap that:
+  1) Verifies the official repository,
+  2) Downloads and installs the current Zero-E from its new home, and
   3) Continues running normally.
 
 New canonical repository: https://github.com/sl3yE/zero-e
+If you discovered this unexpectedly, you can verify authenticity by visiting the link above.
 Thanks for continuing to use Zero-E!
 MSG
 }
 
-verify_new_repo_id() {
-  # Verify the target repo is the expected one by ID (stable across renames/transfers).
-  # No jq dependency; parse minimally.
+verify_new_repo_identity() {
   local api="https://api.github.com/repos/${NEW_OWNER}/${NEW_REPO}"
-  local rid
-  rid="$(curl -fsSL "$api" | sed -nE 's/.*"id":\s*([0-9]+).*/\1/p;q')" || rid=""
-  if [ -z "${rid:-}" ] || [ "$rid" != "$EXPECTED_REPO_ID" ]; then
-    say "[Zero-E] Security check failed: unexpected repository ID. Aborting."
-    say "[Zero-E] Expected: ${EXPECTED_REPO_ID}, Got: ${rid:-<none>}"
-    exit 1
+  local auth=()
+  [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+
+  # Fetch JSON with explicit UA + short timeout; write to a temp file
+  local tmpjson http
+  tmpjson="$(mktemp)"; trap 'rm -f "$tmpjson"' RETURN
+  http=$(curl -fsS -w '%{http_code}' -m 6 -A "zeroe-bootstrap/1.0" "${auth[@]}" -o "$tmpjson" "$api" || true)
+
+  if [ "$http" != "200" ]; then
+    say "[Zero-E] Warning: GitHub API returned HTTP $http (rate limit? private? network filter?)."
+    say "[Zero-E] Proceeding with post-download validation instead."
+    return 0
   fi
+
+  # Extract key fields (avoid brittle first-match on 'id')
+  # Grab the first 'id' that appears AFTER the 'full_name' match, if possible.
+  local full_name owner_login rid
+  full_name="$(sed -nE 's/.*"full_name":[[:space:]]*"([^"]+)".*/\1/p' "$tmpjson" | head -n1)"
+  owner_login="$(sed -nE 's/.*"login":[[:space:]]*"([^"]+)".*/\1/p' "$tmpjson" | head -n1)"
+  rid="$(sed -nE 's/.*"id":[[:space:]]*([0-9]+).*/\1/p' "$tmpjson" | head -n1)"
+
+  # Prefer strict ID check when available
+  if [ -n "$EXPECTED_REPO_ID" ] && [ -n "$rid" ]; then
+    if [ "$rid" != "$EXPECTED_REPO_ID" ]; then
+      say "[Zero-E] Security check failed: unexpected repository ID."
+      say "[Zero-E] Expected: ${EXPECTED_REPO_ID}, Got: ${rid}"
+      exit 1
+    fi
+    return 0
+  fi
+
+  # Fall back to names if ID unavailable
+  if [ "$full_name" = "${NEW_OWNER}/${NEW_REPO}" ] && [ "$owner_login" = "${NEW_OWNER}" ]; then
+    say "[Zero-E] Repo identity verified by owner/full_name (ID unavailable)."
+    return 0
+  fi
+
+  say "[Zero-E] Security check failed: unable to verify repository identity."
+  say "[Zero-E] Got: owner=${owner_login:-<none>} full_name=${full_name:-<none>} id=${rid:-<none>}"
+  exit 1
 }
 
 install_new_script() {
-  # Download the real script and replace the current file in-place
+  # Resolve where this file lives and replace it in-place
   local self="${BASH_SOURCE[0]:-$0}"
   local dir; dir="$(cd "$(dirname "$self")" && pwd -P)"
   local target="${dir}/zero-e"
 
-  # Download to temp first
+  # Safety: don’t accidentally fetch ourselves
+  if [[ "$NEW_RAW_URL" == *"/Inscyght/zero-e/"* ]]; then
+    say "[Zero-E] Misconfiguration: NEW_RAW_URL points to the bootstrap repo. Aborting."
+    exit 1
+  fi
+
   local tmp; tmp="$(mktemp)"
-  trap 'rm -f "$tmp"' EXIT
+  trap 'rm -f "$tmp"' RETURN
 
   curl -fsSL "$NEW_RAW_URL" -o "$tmp"
 
-  # Light sanity check: ensure it looks like the real script
-  if ! grep -q '^version=' "$tmp"; then
-    say "[Zero-E] Downloaded file doesn't look like Zero-E (no version= line). Aborting."
+  # Sanity fences
+  grep -q '^version=' "$tmp" || { say "[Zero-E] Downloaded file missing version= line."; exit 1; }
+  head -n1 "$tmp" | grep -qE '^#!' || { say "[Zero-E] Downloaded file missing shebang."; exit 1; }
+  # Lightweight heuristic: ensure script references expected repo path somewhere
+  grep -Eq 'github\.com/'"$NEW_OWNER"'/'"$NEW_REPO" "$tmp" || {
+    say "[Zero-E] Downloaded script does not reference the expected repository path."
     exit 1
-  fi
-  if ! head -n 1 "$tmp" | grep -qE '^#!'; then
-    say "[Zero-E] Downloaded file missing a shebang. Aborting."
-    exit 1
-  fi
+  }
 
-  # Install over the current file
   chmod 0755 "$tmp"
   mv "$tmp" "$target"
 
-  # If user also has 'zeroe' on PATH, refresh it as well (optional but helpful)
+  # If a 'zeroe' shim exists on PATH, refresh it too (best effort)
   if command -v zeroe >/dev/null 2>&1; then
     local pathbin; pathbin="$(command -v zeroe)"
-    # Best-effort copy (requires sudo if PATH location is root-owned)
     if cp "$target" "$pathbin" 2>/dev/null || sudo cp "$target" "$pathbin"; then
       chmod 0755 "$pathbin" 2>/dev/null || sudo chmod 0755 "$pathbin" || true
     fi
   fi
 
-  # Re-exec with original args so the current run continues
+  # Hand off to the real script with original args
   exec "$target" "$@"
 }
 
 main() {
   migration_notice
-  verify_new_repo_id
+  verify_new_repo_identity
   install_new_script "$@"
 }
 
