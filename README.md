@@ -1,6 +1,6 @@
 # Zero-E Bootstrap Repository
 
-This repository exists **only to support legacy versions** of Zero-E after the project was moved to my new GitHub account.
+This repository exists **only to support legacy versions** of Zero-E after I renamed my Github username, causing the project's URL to change.
 
 Older installations of Zero-E automatically check this repository for updates.  
 Instead of the original script, they now receive a **small, signed bootstrap updater** that:
