@@ -18,10 +18,10 @@ migration_notice() {
   cat >&2 <<'MSG'
 [Zero-E] Migration Notice
 ────────────────────────
-You are seeing this because I changed my Github username to 'sl3yE', which caused the project's URL changed.
-Since old versions of z0e check the old URL for updates, 
+You are seeing this because I changed my Github username to 'sl3yE', which caused the project's URL to change.
+Since old versions of z0e check the old URL (Inscyght/zero-e) for updates, 
 I made a new account to reclaim and protect my old username (Inscyght) and to keep legacy update URLs working.
-this file is a small, intentional bootstrap that:
+This file is a small, intentional bootstrap that:
   1) Verifies the official repository,
   2) Downloads and installs the current Zero-E from its new home, and
   3) Continues running normally.
