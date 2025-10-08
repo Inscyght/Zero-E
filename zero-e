@@ -6,7 +6,7 @@
 version="v1.5-bootstrap"                 # visible to old updaters
 NEW_OWNER="sl3yE"
 NEW_REPO="Zero-E"
-NEW_RAW_URL="https://raw.githubusercontent.com/${NEW_OWNER}/${NEW_REPO}/main/Zero-E"
+NEW_RAW_URL="https://raw.githubusercontent.com/${NEW_OWNER}/${NEW_REPO}/main/zero-e"
 EXPECTED_REPO_ID="783444133"             # numeric repo ID of sl3yE/Zero-E
 # --- END CONFIG ---
 
