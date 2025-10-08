@@ -48,12 +48,11 @@ verify_new_repo_identity() {
     return 0
   fi
 
-  # Extract key fields (avoid brittle first-match on 'id')
-  # Grab the first 'id' that appears AFTER the 'full_name' match, if possible.
-  local full_name owner_login rid
+  # Extract fields (prefer the FIRST "id" = repo.id)
+  local rid full_name owner_login
+  rid="$(grep -oE '"id":[[:space:]]*[0-9]+' "$tmpjson" | head -n1 | grep -oE '[0-9]+')"
   full_name="$(sed -nE 's/.*"full_name":[[:space:]]*"([^"]+)".*/\1/p' "$tmpjson" | head -n1)"
   owner_login="$(sed -nE 's/.*"login":[[:space:]]*"([^"]+)".*/\1/p' "$tmpjson" | head -n1)"
-  rid="$(sed -nE 's/.*"id":[[:space:]]*([0-9]+).*/\1/p' "$tmpjson" | head -n1)"
 
   # Prefer strict ID check when available
   if [ -n "$EXPECTED_REPO_ID" ] && [ -n "$rid" ]; then
